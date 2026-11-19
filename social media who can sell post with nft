@@ -1,0 +1,110 @@
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract SocialPostNFT is ERC721, Ownable {
+
+    uint256 public nextTokenId;
+
+    struct Post {
+        address creator;
+        string contentURI;
+        uint256 price;
+        bool forSale;
+    }
+
+    mapping(uint256 => Post) public posts;
+
+    event PostCreated(
+        uint256 indexed tokenId,
+        address indexed creator,
+        string contentURI
+    );
+
+    event PostPurchased(
+        uint256 indexed tokenId,
+        address indexed buyer,
+        uint256 price
+    );
+
+    constructor()
+        ERC721("SocialPostNFT", "SPNFT")
+        Ownable(msg.sender)
+    {}
+
+    // Create social media post as NFT
+    function createPost(
+        string memory contentURI,
+        uint256 price
+    ) external {
+
+        uint256 tokenId = nextTokenId++;
+
+        _safeMint(msg.sender, tokenId);
+
+        posts[tokenId] = Post({
+            creator: msg.sender,
+            contentURI: contentURI,
+            price: price,
+            forSale: price > 0
+        });
+
+        emit PostCreated(
+            tokenId,
+            msg.sender,
+            contentURI
+        );
+    }
+
+    // Buy NFT post
+    function buyPost(uint256 tokenId) external payable {
+
+        Post storage post = posts[tokenId];
+
+        require(post.forSale, "Not for sale");
+        require(msg.value == post.price, "Wrong payment");
+        require(ownerOf(tokenId) != msg.sender, "Already owner");
+
+        address seller = ownerOf(tokenId);
+
+        post.forSale = false;
+
+        _transfer(seller, msg.sender, tokenId);
+
+        (bool success, ) = payable(seller).call{
+            value: msg.value
+        }("");
+
+        require(success, "Payment failed");
+
+        emit PostPurchased(
+            tokenId,
+            msg.sender,
+            msg.value
+        );
+    }
+
+    // Creator lists NFT again
+    function listPost(
+        uint256 tokenId,
+        uint256 price
+    ) external {
+
+        require(ownerOf(tokenId) == msg.sender, "Not owner");
+        require(price > 0, "Invalid price");
+
+        posts[tokenId].price = price;
+        posts[tokenId].forSale = true;
+    }
+
+    // Cancel listing
+    function cancelSale(uint256 tokenId) external {
+
+        require(ownerOf(tokenId) == msg.sender, "Not owner");
+
+        posts[tokenId].forSale = false;
+    }
+}
